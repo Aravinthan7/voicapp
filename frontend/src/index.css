@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', 'Noto Sans Malayalam', 'Noto Sans Tamil', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+  /* Brand colors */
+  --color-brand-50: oklch(0.97 0.03 250);
+  --color-brand-100: oklch(0.93 0.06 250);
+  --color-brand-200: oklch(0.85 0.10 250);
+  --color-brand-500: oklch(0.62 0.19 255);
+  --color-brand-600: oklch(0.55 0.20 255);
+  --color-brand-700: oklch(0.48 0.18 255);
+
+  /* Surface layers (Dark-first modern theme) */
+  --color-surface-bg: oklch(0.14 0.02 260);         /* slate-950 base */
+  --color-surface-card: oklch(0.18 0.025 260);      /* slate-900 raised */
+  --color-surface-elevated: oklch(0.24 0.03 260);  /* slate-800 modal/overlay */
+  --color-surface-hover: oklch(0.28 0.035 260);
+
+  /* Borders & Dividers */
+  --color-border-subtle: oklch(0.26 0.02 260);
+  --color-border-strong: oklch(0.36 0.03 260);
+
+  /* Text & Ink */
+  --color-ink-primary: oklch(0.98 0.005 260);
+  --color-ink-secondary: oklch(0.78 0.02 260);
+  --color-ink-muted: oklch(0.58 0.02 260);
+  --color-ink-disabled: oklch(0.40 0.01 260);
+
+  /* Status Colors */
+  --color-status-success: oklch(0.68 0.18 145);
+  --color-status-warning: oklch(0.75 0.16 75);
+  --color-status-danger: oklch(0.63 0.22 25);
+  --color-status-info: oklch(0.65 0.16 230);
+
+  /* Audio Source Distinct Identity */
+  --color-audio-original: oklch(0.65 0.02 260);     /* Neutral slate for original voice */
+  --color-audio-translated: oklch(0.68 0.18 175);   /* Vibrant teal/emerald for translated speech */
+  --color-audio-ai: oklch(0.65 0.20 295);           /* Violet for AI cloned/synthesized speech */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  background-color: var(--color-surface-bg);
+  color: var(--color-ink-primary);
+  font-family: var(--font-sans);
+  line-height: 1.6; /* Generous line-height for Malayalam and Tamil script rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}

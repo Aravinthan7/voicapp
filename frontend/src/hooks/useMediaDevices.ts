@@ -54,8 +54,12 @@ export function useMediaDevices() {
       try {
         const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') {
+          void ctx.resume();
+        }
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.5;
         const source = ctx.createMediaStreamSource(mediaStream);
         source.connect(analyser);
 
@@ -66,6 +70,9 @@ export function useMediaDevices() {
 
         const checkAudio = () => {
           if (!analyserRef.current) return;
+          if (ctx.state === 'suspended') {
+            void ctx.resume();
+          }
           analyserRef.current.getByteFrequencyData(dataArray);
 
           let sum = 0;
@@ -73,9 +80,10 @@ export function useMediaDevices() {
             sum += dataArray[i];
           }
           const avg = sum / dataArray.length;
-          const normalized = Math.min(avg / 100, 1);
+          // Scale responsively for conversational speech levels
+          const normalized = Math.min(avg / 35, 1);
           setAudioLevel(normalized);
-          setIsSpeaking(normalized > 0.15);
+          setIsSpeaking(normalized > 0.06);
 
           animationFrameRef.current = requestAnimationFrame(checkAudio);
         };

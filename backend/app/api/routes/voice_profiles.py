@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
@@ -20,18 +21,14 @@ from app.core.exceptions import AppException
 router = APIRouter(prefix="/voice-profiles", tags=["voice_profiles"])
 
 
-@router.get("/me", response_model=VoiceProfileRead)
+@router.get("/me", response_model=Optional[VoiceProfileRead])
 async def get_my_voice_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     profile = await get_user_voice_profile(db, current_user.id)
     if not profile:
-        raise AppException(
-            status_code=404,
-            code="PROFILE_NOT_FOUND",
-            message="No voice profile found for this user.",
-        )
+        return None
     return VoiceProfileRead(
         id=profile.id,
         userId=profile.user_id,

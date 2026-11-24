@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { VolumeX, Headphones, ArrowLeft } from 'lucide-react';
+import { VolumeX, Headphones, ArrowLeft, Send, Sparkles, Mic, Languages } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { callService } from '../services/callService';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import { useCallSocket } from '../hooks/useCallSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
 import { ParticipantTile } from '../components/call/ParticipantTile';
 import { CallControls } from '../components/call/CallControls';
 import { CaptionsPanel } from '../components/call/CaptionsPanel';
@@ -32,6 +34,14 @@ export const CallRoom: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [outputMode, setOutputMode] = useState<AudioOutputMode>('translated');
   const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
+
+  // Local participant interactive language preferences (allows changing mid-call)
+  const [mySpeakingLang, setMySpeakingLang] = useState<string>(
+    user?.speakingLanguage || 'en-IN'
+  );
+  const [myListeningLang, setMyListeningLang] = useState<string>(
+    user?.listeningLanguage || 'ta-IN'
+  );
 
   // Peer & Translation state
   const [peerName, setPeerName] = useState<string>('Connecting Peer...');
@@ -62,6 +72,13 @@ export const CallRoom: React.FC = () => {
       try {
         const fetched = await callService.getRoom(roomId);
         setRoom(fetched);
+        if (user) {
+          if (user.speakingLanguage) setMySpeakingLang(user.speakingLanguage);
+          if (user.listeningLanguage) setMyListeningLang(user.listeningLanguage);
+        } else {
+          setMySpeakingLang(fetched.primaryLanguage || 'en-IN');
+          setMyListeningLang(fetched.secondaryLanguage || 'ta-IN');
+        }
         // The creator is polite peer, the joiner is impolite (or vice versa)
         if (user && fetched.createdBy === user.id) {
           setIsPolite(false);
@@ -86,6 +103,24 @@ export const CallRoom: React.FC = () => {
 
   const handleWebRTCSignalingRef = useRef<((type: 'offer' | 'answer' | 'ice-candidate', payload: unknown) => Promise<void>) | null>(null);
   const handleLeaveCallRef = useRef<(() => void) | null>(null);
+  const initiateOfferRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Audio ducking for speech synthesis
+  const handleDuckingChange = useCallback((isDucked: boolean) => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.volume = isDucked ? 0.15 : 1.0;
+    }
+  }, []);
+
+  const { speak } = useSpeechSynthesis({
+    outputMode,
+    onDuckingChange: handleDuckingChange,
+  });
+
+  const speakRef = useRef(speak);
+  useEffect(() => {
+    speakRef.current = speak;
+  }, [speak]);
 
   // Handle remote audio stream attachment
   const handleRemoteStream = useCallback((stream: MediaStream) => {
@@ -112,6 +147,18 @@ export const CallRoom: React.FC = () => {
           if (payload.displayName) setPeerName(payload.displayName);
           if (payload.speakingLanguage) setPeerSpeakingLang(payload.speakingLanguage);
           if (payload.listeningLanguage) setPeerListeningLang(payload.listeningLanguage);
+
+          // Both users are present - trigger WebRTC offer negotiation
+          void initiateOfferRef.current?.();
+          break;
+        }
+        case 'peer-language-updated': {
+          const payload = msg.payload as {
+            speakingLanguage?: string;
+            listeningLanguage?: string;
+          };
+          if (payload.speakingLanguage) setPeerSpeakingLang(payload.speakingLanguage);
+          if (payload.listeningLanguage) setPeerListeningLang(payload.listeningLanguage);
           break;
         }
         case 'peer-left':
@@ -129,7 +176,7 @@ export const CallRoom: React.FC = () => {
           break;
         }
         case 'caption': {
-          const cap = msg.payload as CaptionItem;
+          const cap = msg.payload as CaptionItem & { isSelf?: boolean };
           setCaptions((prev) => {
             const index = prev.findIndex((c) => c.id === cap.id);
             if (index >= 0) {
@@ -139,6 +186,11 @@ export const CallRoom: React.FC = () => {
             }
             return [...prev.slice(-20), cap]; // keep in-memory sliding window
           });
+
+          // Receiver speaks the translated text out loud unless this is our own echo
+          if (!cap.isSelf && cap.translatedText) {
+            speakRef.current?.(cap.translatedText, myListeningLang);
+          }
           break;
         }
         case 'end-call':
@@ -148,13 +200,61 @@ export const CallRoom: React.FC = () => {
           break;
       }
     },
-    []
+    [myListeningLang]
   );
 
   const { isConnected: isSocketConnected, sendMessage } = useCallSocket({
     roomId: roomId || '',
     onMessage: handleSignalingMessage,
   });
+
+  // Speech Recognition hook - continuous voice transcription in speaking language
+  const handleFinalSpeechUtterance = useCallback(
+    (transcript: string) => {
+      if (!transcript.trim()) return;
+      sendMessage('speech-utterance', {
+        text: transcript,
+        speakingLanguage: mySpeakingLang,
+        targetLanguage: peerListeningLang,
+      });
+      setTranslationState('translating');
+    },
+    [sendMessage, mySpeakingLang, peerListeningLang]
+  );
+
+  const {
+    isSupported: isSpeechRecSupported,
+    interimTranscript,
+  } = useSpeechRecognition({
+    language: mySpeakingLang,
+    enabled: micStatus === 'granted' && !isMuted && isSocketConnected,
+    onFinalUtterance: handleFinalSpeechUtterance,
+  });
+
+  // Quick utterance input state
+  const [manualText, setManualText] = useState('');
+
+  const handleSendUtterance = (textToSend?: string) => {
+    const text = (textToSend !== undefined ? textToSend : manualText).trim();
+    if (!text) return;
+    sendMessage('speech-utterance', {
+      text,
+      speakingLanguage: mySpeakingLang,
+      targetLanguage: peerListeningLang,
+    });
+    setTranslationState('translating');
+    setManualText('');
+  };
+
+  const handleChangeSpeakingLang = (lang: string) => {
+    setMySpeakingLang(lang);
+    sendMessage('language-update', { speakingLanguage: lang });
+  };
+
+  const handleChangeListeningLang = (lang: string) => {
+    setMyListeningLang(lang);
+    sendMessage('language-update', { listeningLanguage: lang });
+  };
 
   // WebRTC hook
   const sendWebRTCSignaling = useCallback(
@@ -169,6 +269,7 @@ export const CallRoom: React.FC = () => {
     remoteAudioLevel,
     isRemoteSpeaking,
     handleSignalingData: handleWebRTCSignaling,
+    initiateOffer,
     closeConnection,
   } = useWebRTC({
     isPolite,
@@ -180,6 +281,10 @@ export const CallRoom: React.FC = () => {
   useEffect(() => {
     handleWebRTCSignalingRef.current = handleWebRTCSignaling;
   }, [handleWebRTCSignaling]);
+
+  useEffect(() => {
+    initiateOfferRef.current = initiateOffer;
+  }, [initiateOffer]);
 
   // Toggle Mute
   const handleToggleMute = () => {
@@ -286,14 +391,54 @@ export const CallRoom: React.FC = () => {
         </div>
       </div>
 
+      {/* In-Call Active Language Selectors (Allows changing languages mid-call) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-surface-card border border-border-subtle text-xs shadow-xs">
+        <div className="flex items-center gap-2">
+          <Languages className="size-4 text-brand-400" />
+          <span className="font-semibold text-ink-primary">Live Call Languages:</span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Speaking Language Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-ink-muted">You Speak:</span>
+            <select
+              value={mySpeakingLang}
+              onChange={(e) => handleChangeSpeakingLang(e.target.value)}
+              className="bg-surface-elevated border border-border-subtle rounded-lg px-2.5 py-1 text-xs text-ink-primary font-medium focus:outline-hidden focus:ring-1 focus:ring-brand-500 cursor-pointer"
+            >
+              <option value="en-IN">English (English)</option>
+              <option value="ta-IN">தமிழ் (Tamil)</option>
+              <option value="ml-IN">മലയാളം (Malayalam)</option>
+              <option value="hi-IN">हिन्दी (Hindi)</option>
+            </select>
+          </div>
+
+          {/* Listening Language Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-ink-muted">You Hear Translated To:</span>
+            <select
+              value={myListeningLang}
+              onChange={(e) => handleChangeListeningLang(e.target.value)}
+              className="bg-surface-elevated border border-border-subtle rounded-lg px-2.5 py-1 text-xs text-ink-primary font-medium focus:outline-hidden focus:ring-1 focus:ring-brand-500 cursor-pointer"
+            >
+              <option value="ta-IN">தமிழ் (Tamil)</option>
+              <option value="ml-IN">മലയാളം (Malayalam)</option>
+              <option value="hi-IN">हिन्दी (Hindi)</option>
+              <option value="en-IN">English (English)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Two-Participant Interactive Calling Stage */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-1">
         {/* Local Participant Tile */}
         <ParticipantTile
           name={user?.displayName || 'You'}
           isSelf
-          speakingLanguage={user?.speakingLanguage || room.primaryLanguage}
-          listeningLanguage={user?.listeningLanguage || room.secondaryLanguage}
+          speakingLanguage={mySpeakingLang}
+          listeningLanguage={myListeningLang}
           isMuted={isMuted}
           isSpeaking={isLocalSpeaking}
           audioLevel={localAudioLevel}
@@ -309,6 +454,84 @@ export const CallRoom: React.FC = () => {
           isSpeaking={isRemoteSpeaking}
           audioLevel={remoteAudioLevel}
         />
+      </div>
+
+      {/* Live Speech Recognition Feedback (Active speaking transcript preview) */}
+      {interimTranscript && (
+        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-brand-500/10 border border-brand-500/30 text-xs text-brand-300 animate-pulse">
+          <Mic className="size-3.5 text-brand-400 shrink-0 animate-bounce" />
+          <span className="font-semibold text-brand-200">Listening to you:</span>
+          <span className="italic truncate">"{interimTranscript}"</span>
+        </div>
+      )}
+
+      {/* Browser Speech Recognition Warning (if not supported on that browser/platform) */}
+      {!isSpeechRecSupported && (
+        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
+          <span>Your browser does not support Web Speech Recognition (supported on Chrome, Edge, Safari, Android Chrome). You can use the Quick Utterance bar below to test live translation!</span>
+        </div>
+      )}
+
+      {/* Quick Utterance & Manual Translation Test Bar */}
+      <div className="p-3.5 rounded-2xl bg-surface-card border border-border-subtle flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-ink-primary">
+            <Sparkles className="size-3.5 text-brand-400" />
+            <span>Test Speech &amp; Live Translation</span>
+            <span className="text-[11px] text-ink-muted">(Speech / Quick Phrases / Custom Text)</span>
+          </div>
+          <span className="text-[11px] text-brand-300 font-medium">
+            Speaking in {mySpeakingLang} &rarr; Translating to {peerListeningLang}
+          </span>
+        </div>
+
+        {/* Quick Phrase Chips */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { label: '👋 Hello, how are you?', text: 'Hello, how are you?' },
+            { label: '🌅 Good morning', text: 'Good morning' },
+            { label: '🙏 Thank you', text: 'Thank you very much' },
+            { label: '❓ Can you hear me?', text: 'Can you hear me clearly?' },
+            { label: 'മലയാളം: നമസ്കാരം', text: 'നമസ്കാരം, സുഖമാണോ?' },
+            { label: 'தமிழ்: வணக்கம்', text: 'வணக்கம், எப்படி இருக்கிறீர்கள்?' },
+            { label: 'हिन्दी: नमस्ते', text: 'नमस्ते, आप कैसे हैं?' },
+          ].map((item, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleSendUtterance(item.text)}
+              className="px-2.5 py-1 rounded-lg text-xs bg-surface-elevated hover:bg-brand-500/20 hover:text-brand-300 border border-border-subtle transition-colors cursor-pointer"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom Text Utterance Input */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendUtterance();
+          }}
+          className="flex items-center gap-2 mt-1"
+        >
+          <input
+            type="text"
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            placeholder="Type any sentence to translate and speak to peer..."
+            className="flex-1 bg-surface-elevated/70 border border-border-subtle rounded-xl px-3.5 py-1.5 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-hidden focus:ring-1 focus:ring-brand-500"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            variant="primary"
+            disabled={!manualText.trim()}
+            leadingIcon={<Send className="size-3.5" />}
+          >
+            Send &amp; Speak
+          </Button>
+        </form>
       </div>
 
       {/* Live Captions Panel */}

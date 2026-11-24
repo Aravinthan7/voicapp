@@ -21,11 +21,27 @@ export function useCallSocket({
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(1);
+
   const onMessageRef = useRef(onMessage);
+  const onOpenRef = useRef(onOpen);
+  const onCloseRef = useRef(onClose);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
+
+  useEffect(() => {
+    onOpenRef.current = onOpen;
+  }, [onOpen]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   const sendMessage = useCallback((type: SignalingMessage['type'], payload: unknown = {}) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -42,7 +58,11 @@ export function useCallSocket({
     if (!roomId) return;
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = import.meta.env.VITE_WS_BASE_URL || `${wsProtocol}//${window.location.hostname}:8000/api/v1`;
+    const defaultHost =
+      window.location.protocol === 'https:'
+        ? `${wsProtocol}//${window.location.host}/api/v1`
+        : `${wsProtocol}//${window.location.hostname}:8000/api/v1`;
+    const wsHost = import.meta.env.VITE_WS_BASE_URL || defaultHost;
     const authToken = token || localStorage.getItem('voiceapp_token') || 'guest';
     const wsUrl = `${wsHost}/ws/calls/${roomId}?token=${encodeURIComponent(authToken)}`;
 
@@ -57,7 +77,7 @@ export function useCallSocket({
 
     ws.onopen = () => {
       setIsConnected(true);
-      onOpen?.();
+      onOpenRef.current?.();
       sendMessage('join', { roomId });
     };
 
@@ -70,14 +90,20 @@ export function useCallSocket({
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setIsConnected(false);
-      onClose?.();
+      onCloseRef.current?.();
+      if (event.code === 1008) {
+        console.warn('Call room is full (maximum 2 participants).');
+      }
     };
 
     ws.onerror = (err) => {
-      console.error('WebSocket encountered error:', err);
-      onError?.(err);
+      // Ignore if socket was aborted on component unmount
+      if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+        return;
+      }
+      onErrorRef.current?.(err);
     };
 
     // Heartbeat ping interval
@@ -89,12 +115,17 @@ export function useCallSocket({
 
     return () => {
       clearInterval(pingInterval);
+      // Detach listeners so unmount doesn't emit false error events
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+        ws.close(1000, 'Component unmounted');
       }
       socketRef.current = null;
     };
-  }, [roomId, token, onOpen, onClose, onError, sendMessage]);
+  }, [roomId, token, sendMessage]);
 
   return {
     isConnected,

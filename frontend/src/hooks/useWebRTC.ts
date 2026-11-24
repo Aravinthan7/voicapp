@@ -23,6 +23,18 @@ export function useWebRTC({
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
   const isSettingRemoteAnswerPendingRef = useRef(false);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+
+  const sendSignalingRef = useRef(sendSignaling);
+  const onRemoteStreamAvailableRef = useRef(onRemoteStreamAvailable);
+
+  useEffect(() => {
+    sendSignalingRef.current = sendSignaling;
+  }, [sendSignaling]);
+
+  useEffect(() => {
+    onRemoteStreamAvailableRef.current = onRemoteStreamAvailable;
+  }, [onRemoteStreamAvailable]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -35,8 +47,12 @@ export function useWebRTC({
       }
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        void ctx.resume();
+      }
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.5;
       const src = ctx.createMediaStreamSource(stream);
       src.connect(analyser);
 
@@ -46,13 +62,16 @@ export function useWebRTC({
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const loop = () => {
         if (!analyserRef.current) return;
+        if (ctx.state === 'suspended') {
+          void ctx.resume();
+        }
         analyserRef.current.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
         const avg = sum / dataArray.length;
-        const norm = Math.min(avg / 100, 1);
+        const norm = Math.min(avg / 35, 1);
         setRemoteAudioLevel(norm);
-        setIsRemoteSpeaking(norm > 0.15);
+        setIsRemoteSpeaking(norm > 0.06);
         animFrameRef.current = requestAnimationFrame(loop);
       };
       loop();
@@ -79,6 +98,7 @@ export function useWebRTC({
     setIsRemoteSpeaking(false);
   }, []);
 
+  // Initialize persistent RTCPeerConnection on mount
   useEffect(() => {
     const pc = new RTCPeerConnection({
       iceServers: [
@@ -94,7 +114,7 @@ export function useWebRTC({
         makingOfferRef.current = true;
         await pc.setLocalDescription();
         if (pc.localDescription) {
-          sendSignaling('offer', pc.localDescription);
+          sendSignalingRef.current('offer', pc.localDescription);
         }
       } catch (err) {
         console.error('Error during offer creation:', err);
@@ -106,7 +126,7 @@ export function useWebRTC({
     // ICE Candidate emission
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) {
-        sendSignaling('ice-candidate', candidate);
+        sendSignalingRef.current('ice-candidate', candidate);
       }
     };
 
@@ -115,7 +135,7 @@ export function useWebRTC({
       const [stream] = event.streams;
       if (stream) {
         remoteStreamRef.current = stream;
-        onRemoteStreamAvailable?.(stream);
+        onRemoteStreamAvailableRef.current?.(stream);
         setupRemoteAudioAnalyser(stream);
       }
     };
@@ -140,17 +160,62 @@ export function useWebRTC({
       }
     };
 
-    // Attach local audio tracks if already present
-    if (localStream) {
-      localStream.getAudioTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-      });
-    }
-
     return () => {
       closeConnection();
     };
-  }, [isPolite, localStream, sendSignaling, onRemoteStreamAvailable, setupRemoteAudioAnalyser, closeConnection]);
+  }, [setupRemoteAudioAnalyser, closeConnection]);
+
+  // Synchronize local audio tracks whenever localStream updates (without destroying connection)
+  useEffect(() => {
+    const pc = pcRef.current;
+    if (!pc || !localStream) return;
+
+    localStream.getAudioTracks().forEach((track) => {
+      const senders = pc.getSenders();
+      const existingSender = senders.find((s) => s.track?.kind === 'audio');
+      if (existingSender) {
+        void existingSender.replaceTrack(track);
+      } else {
+        pc.addTrack(track, localStream);
+      }
+    });
+  }, [localStream]);
+
+  // Helper to drain pending ICE candidates once remote description is set
+  const drainPendingCandidates = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc || !pc.remoteDescription) return;
+
+    while (pendingCandidatesRef.current.length > 0) {
+      const cand = pendingCandidatesRef.current.shift();
+      if (cand) {
+        try {
+          await pc.addIceCandidate(cand);
+        } catch (err) {
+          console.warn('Queued ICE candidate addition error:', err);
+        }
+      }
+    }
+  }, []);
+
+  // Explicit offer initiation when peer arrives
+  const initiateOffer = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    try {
+      makingOfferRef.current = true;
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+      });
+      await pc.setLocalDescription(offer);
+      sendSignalingRef.current('offer', pc.localDescription);
+    } catch (err) {
+      console.error('Failed to initiate WebRTC offer:', err);
+    } finally {
+      makingOfferRef.current = false;
+    }
+  }, []);
 
   // Handle incoming signaling message (Offer, Answer, ICE candidate)
   const handleSignalingData = useCallback(
@@ -172,22 +237,30 @@ export function useWebRTC({
           }
 
           await pc.setRemoteDescription(offerDesc);
+          await drainPendingCandidates();
+
           await pc.setLocalDescription();
           if (pc.localDescription) {
-            sendSignaling('answer', pc.localDescription);
+            sendSignalingRef.current('answer', pc.localDescription);
           }
         } else if (type === 'answer') {
           const answerDesc = payload as RTCSessionDescriptionInit;
           isSettingRemoteAnswerPendingRef.current = true;
           await pc.setRemoteDescription(answerDesc);
           isSettingRemoteAnswerPendingRef.current = false;
+          await drainPendingCandidates();
         } else if (type === 'ice-candidate') {
           const candidateInit = payload as RTCIceCandidateInit;
-          try {
-            await pc.addIceCandidate(candidateInit);
-          } catch (err) {
-            if (!ignoreOfferRef.current) {
-              console.warn('ICE candidate addition failed:', err);
+          if (!pc.remoteDescription) {
+            // Queue candidate until remote description is established
+            pendingCandidatesRef.current.push(candidateInit);
+          } else {
+            try {
+              await pc.addIceCandidate(candidateInit);
+            } catch (err) {
+              if (!ignoreOfferRef.current) {
+                console.warn('ICE candidate addition failed:', err);
+              }
             }
           }
         }
@@ -195,7 +268,7 @@ export function useWebRTC({
         console.error('Signaling processing error:', err);
       }
     },
-    [isPolite, sendSignaling]
+    [isPolite, drainPendingCandidates]
   );
 
   return {
@@ -203,6 +276,7 @@ export function useWebRTC({
     remoteAudioLevel,
     isRemoteSpeaking,
     handleSignalingData,
+    initiateOffer,
     closeConnection,
   };
 }

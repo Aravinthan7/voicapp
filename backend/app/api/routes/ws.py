@@ -13,6 +13,18 @@ router = APIRouter(tags=["websocket"])
 translator = SimulatedTranslator()
 
 
+async def _reset_status_after_delay(room_id: str, delay: float = 2.5):
+    await asyncio.sleep(delay)
+    await manager.broadcast_to_room(
+        room_id,
+        json.dumps({
+            "type": "translation-status",
+            "payload": {"state": "idle"},
+            "seq": 0,
+        }),
+    )
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_rooms: Dict[str, List[WebSocket]] = {}
@@ -23,7 +35,23 @@ class ConnectionManager:
         if room_id not in self.active_rooms:
             self.active_rooms[room_id] = []
 
-        # Strict One-to-One: Reject 3rd participant
+        # 1. Clean up stale/duplicate connections for the same user (reconnects or React StrictMode)
+        user_id = user_info.get("userId")
+        if user_id:
+            stale_conns = [
+                conn for conn in self.active_rooms[room_id]
+                if self.user_meta.get(conn, {}).get("userId") == user_id
+            ]
+            for stale in stale_conns:
+                self.active_rooms[room_id].remove(stale)
+                if stale in self.user_meta:
+                    del self.user_meta[stale]
+                try:
+                    await stale.close(code=1000)
+                except Exception:
+                    pass
+
+        # 2. Strict One-to-One: Reject 3rd distinct participant
         if len(self.active_rooms[room_id]) >= 2:
             await websocket.send_text(
                 json.dumps({
@@ -41,9 +69,10 @@ class ConnectionManager:
         self.active_rooms[room_id].append(websocket)
         self.user_meta[websocket] = user_info
 
-        # Inform existing peer in room about the newly joined participant
+        # Inform existing peer in room about the newcomer, AND inform newcomer about existing peer
         for peer in self.active_rooms[room_id]:
             if peer != websocket:
+                # To existing peer
                 await peer.send_text(
                     json.dumps({
                         "type": "peer-joined",
@@ -51,6 +80,19 @@ class ConnectionManager:
                             "displayName": user_info.get("displayName", "Peer"),
                             "speakingLanguage": user_info.get("speakingLanguage", "ta-IN"),
                             "listeningLanguage": user_info.get("listeningLanguage", "ml-IN"),
+                        },
+                        "seq": 1,
+                    })
+                )
+                # To newcomer
+                peer_info = self.user_meta.get(peer, {})
+                await websocket.send_text(
+                    json.dumps({
+                        "type": "peer-joined",
+                        "payload": {
+                            "displayName": peer_info.get("displayName", "Peer"),
+                            "speakingLanguage": peer_info.get("speakingLanguage", "ta-IN"),
+                            "listeningLanguage": peer_info.get("listeningLanguage", "ml-IN"),
                         },
                         "seq": 1,
                     })
@@ -91,13 +133,14 @@ manager = ConnectionManager()
 @router.websocket("/ws/calls/{room_id}")
 async def websocket_call_endpoint(websocket: WebSocket, room_id: str, token: str = "guest"):
     # Resolve user details from token if authenticated
+    user_id = decode_access_token(token)
     user_info = {
+        "userId": user_id or f"anon_{id(websocket)}",
         "displayName": "Participant",
         "speakingLanguage": "ml-IN",
         "listeningLanguage": "ta-IN",
     }
 
-    user_id = decode_access_token(token)
     if user_id:
         async with AsyncSessionLocal() as db:
             stmt = select(User).where(User.id == user_id)
@@ -139,56 +182,107 @@ async def websocket_call_endpoint(websocket: WebSocket, room_id: str, token: str
                     # Relay WebRTC signaling directly to peer
                     await manager.broadcast_to_peer(room_id, websocket, data)
 
+                elif msg_type == "language-update":
+                    speaking = payload.get("speakingLanguage")
+                    listening = payload.get("listeningLanguage")
+                    if speaking:
+                        user_info["speakingLanguage"] = speaking
+                    if listening:
+                        user_info["listeningLanguage"] = listening
+                    manager.user_meta[websocket] = user_info
+                    await manager.broadcast_to_peer(
+                        room_id,
+                        websocket,
+                        json.dumps({
+                            "type": "peer-language-updated",
+                            "payload": {
+                                "speakingLanguage": user_info.get("speakingLanguage"),
+                                "listeningLanguage": user_info.get("listeningLanguage"),
+                            },
+                            "seq": msg.get("seq", 0),
+                        }),
+                    )
+
                 elif msg_type == "speech-utterance":
-                    # Simulated speech processing driven by receiver's listening language
-                    text = payload.get("text", "")
-                    sender_lang = user_info.get("speakingLanguage", "ml-IN")
+                    text = payload.get("text", "").strip()
+                    if not text:
+                        continue
+
+                    # 1. Update room status to translating
+                    await manager.broadcast_to_room(
+                        room_id,
+                        json.dumps({
+                            "type": "translation-status",
+                            "payload": {"state": "translating"},
+                            "seq": msg.get("seq", 0),
+                        }),
+                    )
+
                     peer_meta = manager.get_peer_meta(room_id, websocket)
+                    sender_lang = payload.get("speakingLanguage") or user_info.get("speakingLanguage", "ml-IN")
+                    # Receiver-driven translation: target is peer's listeningLanguage (or explicit target)
+                    target_lang = payload.get("targetLanguage") or (peer_meta.get("listeningLanguage", "ta-IN") if peer_meta else "ta-IN")
+                    speaker_name = user_info.get("displayName", "You")
+                    cap_id = f"cap_{asyncio.get_event_loop().time()}"
 
-                    # The receiver always decides what they hear!
-                    target_lang = peer_meta.get("listeningLanguage", "ta-IN") if peer_meta else "ta-IN"
-
-                    # Same-language passthrough check
-                    if sender_lang == target_lang:
-                        # Original audio delivery without translation
-                        await manager.broadcast_to_peer(
-                            room_id,
-                            websocket,
-                            json.dumps({
-                                "type": "caption",
-                                "payload": {
-                                    "id": f"cap_{asyncio.get_event_loop().time()}",
-                                    "speakerName": user_info.get("displayName", "Peer"),
-                                    "originalText": text,
-                                    "translatedText": text,
-                                    "originalLanguage": sender_lang,
-                                    "targetLanguage": target_lang,
-                                    "isFinal": True,
-                                    "isPassthrough": True,
-                                },
-                                "seq": msg.get("seq", 0),
-                            }),
-                        )
+                    is_passthrough = sender_lang == target_lang
+                    if is_passthrough:
+                        translated_text = text
                     else:
                         translated_text = await translator.translate(text, sender_lang, target_lang)
-                        await manager.broadcast_to_peer(
-                            room_id,
-                            websocket,
-                            json.dumps({
-                                "type": "caption",
-                                "payload": {
-                                    "id": f"cap_{asyncio.get_event_loop().time()}",
-                                    "speakerName": user_info.get("displayName", "Peer"),
-                                    "originalText": text,
-                                    "translatedText": translated_text,
-                                    "originalLanguage": sender_lang,
-                                    "targetLanguage": target_lang,
-                                    "isFinal": True,
-                                    "isPassthrough": False,
-                                },
-                                "seq": msg.get("seq", 0),
-                            }),
-                        )
+
+                    # Send confirmation caption to the speaker
+                    await websocket.send_text(
+                        json.dumps({
+                            "type": "caption",
+                            "payload": {
+                                "id": cap_id,
+                                "speakerId": user_info.get("userId"),
+                                "speakerName": speaker_name,
+                                "originalText": text,
+                                "translatedText": translated_text if not is_passthrough else text,
+                                "originalLanguage": sender_lang,
+                                "targetLanguage": target_lang,
+                                "isFinal": True,
+                                "isSelf": True,
+                                "isPassthrough": is_passthrough,
+                            },
+                            "seq": msg.get("seq", 0),
+                        })
+                    )
+
+                    # Send translated caption to the peer receiver
+                    await manager.broadcast_to_peer(
+                        room_id,
+                        websocket,
+                        json.dumps({
+                            "type": "caption",
+                            "payload": {
+                                "id": cap_id,
+                                "speakerId": user_info.get("userId"),
+                                "speakerName": speaker_name,
+                                "originalText": text,
+                                "translatedText": translated_text,
+                                "originalLanguage": sender_lang,
+                                "targetLanguage": target_lang,
+                                "isFinal": True,
+                                "isSelf": False,
+                                "isPassthrough": is_passthrough,
+                            },
+                            "seq": msg.get("seq", 0),
+                        }),
+                    )
+
+                    # Update status to speaking, then idle
+                    await manager.broadcast_to_room(
+                        room_id,
+                        json.dumps({
+                            "type": "translation-status",
+                            "payload": {"state": "speaking"},
+                            "seq": msg.get("seq", 0),
+                        }),
+                    )
+                    asyncio.create_task(_reset_status_after_delay(room_id, 2.5))
 
                 elif msg_type == "ping":
                     await websocket.send_text(

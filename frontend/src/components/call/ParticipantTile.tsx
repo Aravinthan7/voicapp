@@ -78,6 +78,33 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         {name}
       </h3>
 
+      {/* Sound Wave Equalizer Notation Bars */}
+      <div className="mt-2.5 flex items-center gap-1.5 h-6 px-3 py-1 rounded-full bg-surface-elevated/80 border border-border-subtle">
+        <div className="flex items-center gap-1 h-3.5">
+          {[14, 22, 28, 18, 12].map((maxHeight, i) => {
+            const active = isSpeaking && !isMuted;
+            const factor = active ? Math.max(0.25, Math.min(audioLevel * 2.2, 1)) : 0.15;
+            const barHeight = Math.round(maxHeight * factor);
+            return (
+              <span
+                key={i}
+                className={cx(
+                  'w-1 rounded-full transition-all duration-100',
+                  active ? 'bg-brand-500 animate-pulse' : 'bg-ink-muted/30'
+                )}
+                style={{
+                  height: `${Math.max(3, barHeight)}px`,
+                  animationDelay: `${i * 120}ms`,
+                }}
+              />
+            );
+          })}
+        </div>
+        <span className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted">
+          {isMuted ? 'Muted' : isSpeaking ? 'Speaking' : 'Listening'}
+        </span>
+      </div>
+
       {/* Language Preferences Tags */}
       <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-xs">
         <span className="text-ink-muted">Speaks:</span>

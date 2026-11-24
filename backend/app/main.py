@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Ensure backend root directory is in sys.path so 'app' is always importable
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -151,3 +159,8 @@ async def readiness_check():
         "status": "ready",
         "database": "connected",
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -49,13 +49,24 @@ export const MicPermissionGate: React.FC<MicPermissionGateProps> = ({
             <div className="size-16 rounded-full bg-status-warning/15 flex items-center justify-center text-status-warning mb-1">
               <AlertTriangle className="size-8" />
             </div>
-            <h2 className="text-xl font-bold text-ink-primary">No Microphone Detected</h2>
+            <h2 className="text-xl font-bold text-ink-primary">
+              {!window.isSecureContext ? 'HTTPS Required for Microphone' : 'No Microphone Detected'}
+            </h2>
             <p className="text-sm text-ink-secondary leading-relaxed">
-              We could not find an available audio input device. Please connect a microphone or headset and try again.
+              {!window.isSecureContext ? (
+                <>
+                  Browsers strictly block microphone access over plain HTTP when accessed via an IP address.
+                  Please access the app using <strong className="text-ink-primary">https://</strong> instead of http://.
+                </>
+              ) : (
+                'We could not find an available audio input device. Please connect a microphone or headset and try again.'
+              )}
             </p>
-            <Button fullWidth variant="secondary" onClick={onRequestPermission} leadingIcon={<RefreshCw className="size-4" />}>
-              Check Again
-            </Button>
+            <div className="flex gap-3 w-full mt-2">
+              <Button fullWidth variant="secondary" onClick={onRequestPermission} leadingIcon={<RefreshCw className="size-4" />}>
+                Check Again
+              </Button>
+            </div>
           </>
         ) : (
           <>

@@ -12,13 +12,15 @@ description: PostgreSQL schema design, migrations, and Redis transient-state usa
 
 ## Suggested tables (adapt to the existing `models/`)
 - `users` - id (UUID), email (unique, lowercased), password_hash, display_name, speaking_language, listening_language, created_at, deleted_at.
-- `call_rooms` - id, code (unique, high-entropy), created_by, status (`waiting|active|ended`), language_pair snapshot, created_at, ended_at.
-- `call_participants` - room_id, user_id (nullable if guests allowed - **open decision**), joined_at, left_at.
+- `call_rooms` - id, code (unique, high-entropy), created_by, status (`waiting|active|ended`), per-participant language snapshot (speaking/listening), created_at, ended_at.
+- `call_participants` - room_id, user_id, speaking_language, listening_language, disclosure_acknowledged_at, joined_at, left_at. Exactly 2 participants per call (enforce atomically). The receiver's `listening_language` here drives the translation direction. (Deferred guest access would add nullable user_id, is_guest, display_name.)
 - `voice_profiles` - id, user_id, provider, provider_voice_id, status (`pending|ready|failed|deleted`), languages_supported, created_at, deleted_at.
 - `voice_consents` - id, user_id, voice_profile_id, consent_text_version, granted_at, revoked_at, ip/user-agent hash if needed for audit.
-- `usage_events` (optional, for cost per call minute) - room_id, provider, unit, quantity, estimated_cost.
+- `workspaces` (id, name, plan_id), `workspace_members` (workspace_id, user_id, role), `plans` (limits as data). Add `workspace_id` to `call_rooms`, `voice_profiles`, `usage_events`.
+- `guest_links` (**deferred**, only when guest access is built) - id, call_id, token_hash (never the raw token), expires_at, revoked_at, created_by.
+- `usage_events` (required for SaaS metering) - workspace_id, call_id, participant_id, direction, stage, provider, unit, quantity, estimated_cost, idempotency_key (unique). See `saas-workspaces-guest-access`.
 
-Language values: store as BCP-47 codes (`ml-IN`, `ta-IN`) in a constrained set; keep supported pairs in a table or config, not hard-coded across code.
+Language values: store as BCP-47 codes (e.g. `ml-IN`, `ta-IN`, `hi-IN`, `en-IN`). Keep a `languages` registry table (code, English name, native name, enabled flag, capability flags such as `stt`, `translation_source`, `tts_target`, `voice_cloning`) and validate every user's speaking/listening language against it; derive allowed (source, target) directions from the capabilities. Never hard-code `ml-IN`/`ta-IN` as column defaults or pair constants.
 
 ## Rules
 1. Async SQLAlchemy 2.x, one session per request via dependency; commit in the service layer.

@@ -18,7 +18,7 @@ async def create_call_room(
 ):
     room = await create_room(
         db,
-        user_id=current_user.id,
+        user=current_user,
         primary_language=req.primaryLanguage,
         secondary_language=req.secondaryLanguage,
     )
@@ -26,6 +26,7 @@ async def create_call_room(
         id=room.id,
         code=room.code,
         createdBy=room.created_by,
+        workspaceId=room.workspace_id,
         status=room.status,
         primaryLanguage=room.primary_language,
         secondaryLanguage=room.secondary_language,
@@ -40,11 +41,12 @@ async def join_call_room(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    room = await join_room(db, identifier=req.codeOrId, user_id=current_user.id)
+    room = await join_room(db, identifier=req.codeOrId, user=current_user)
     return CallRoomRead(
         id=room.id,
         code=room.code,
         createdBy=room.created_by,
+        workspaceId=room.workspace_id,
         status=room.status,
         primaryLanguage=room.primary_language,
         secondaryLanguage=room.secondary_language,
@@ -70,6 +72,7 @@ async def get_call_room(
         id=room.id,
         code=room.code,
         createdBy=room.created_by,
+        workspaceId=room.workspace_id,
         status=room.status,
         primaryLanguage=room.primary_language,
         secondaryLanguage=room.secondary_language,

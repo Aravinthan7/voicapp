@@ -35,6 +35,8 @@ export const CallRoom: React.FC = () => {
 
   // Peer & Translation state
   const [peerName, setPeerName] = useState<string>('Connecting Peer...');
+  const [peerSpeakingLang, setPeerSpeakingLang] = useState<string>('ta-IN');
+  const [peerListeningLang, setPeerListeningLang] = useState<string>('ml-IN');
   const [peerPresent, setPeerPresent] = useState(false);
   const [isPolite, setIsPolite] = useState(false);
   const [translationState, setTranslationState] = useState<TranslationState>('idle');
@@ -101,9 +103,15 @@ export const CallRoom: React.FC = () => {
     (msg: SignalingMessage) => {
       switch (msg.type) {
         case 'peer-joined': {
-          const payload = msg.payload as { displayName?: string };
+          const payload = msg.payload as {
+            displayName?: string;
+            speakingLanguage?: string;
+            listeningLanguage?: string;
+          };
           setPeerPresent(true);
           if (payload.displayName) setPeerName(payload.displayName);
+          if (payload.speakingLanguage) setPeerSpeakingLang(payload.speakingLanguage);
+          if (payload.listeningLanguage) setPeerListeningLang(payload.listeningLanguage);
           break;
         }
         case 'peer-left':
@@ -284,8 +292,8 @@ export const CallRoom: React.FC = () => {
         <ParticipantTile
           name={user?.displayName || 'You'}
           isSelf
-          speakingLanguage={room.primaryLanguage}
-          listeningLanguage={room.secondaryLanguage}
+          speakingLanguage={user?.speakingLanguage || room.primaryLanguage}
+          listeningLanguage={user?.listeningLanguage || room.secondaryLanguage}
           isMuted={isMuted}
           isSpeaking={isLocalSpeaking}
           audioLevel={localAudioLevel}
@@ -295,8 +303,8 @@ export const CallRoom: React.FC = () => {
         <ParticipantTile
           name={peerPresent ? peerName : 'Waiting for peer to join...'}
           isSelf={false}
-          speakingLanguage={room.secondaryLanguage}
-          listeningLanguage={room.primaryLanguage}
+          speakingLanguage={peerSpeakingLang}
+          listeningLanguage={peerListeningLang}
           isMuted={false}
           isSpeaking={isRemoteSpeaking}
           audioLevel={remoteAudioLevel}

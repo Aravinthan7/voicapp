@@ -2,6 +2,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.auth import RegisterRequest
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.exceptions import AppException
@@ -28,6 +29,7 @@ async def register_user(db: AsyncSession, req: RegisterRequest) -> tuple[User, s
             message="An account with this email address already exists.",
         )
 
+    # 1. Create User
     user = User(
         email=req.email.lower().strip(),
         password_hash=get_password_hash(req.password),
@@ -36,6 +38,20 @@ async def register_user(db: AsyncSession, req: RegisterRequest) -> tuple[User, s
         listening_language=req.listeningLanguage,
     )
     db.add(user)
+    await db.flush()
+
+    # 2. Create Default Workspace for User
+    workspace = Workspace(
+        name=f"{user.display_name}'s Workspace",
+        owner_id=user.id,
+        plan_type="starter",
+        monthly_minute_limit=60,
+    )
+    db.add(workspace)
+    await db.flush()
+
+    # 3. Associate workspace with user
+    user.workspace_id = workspace.id
     await db.flush()
     await db.refresh(user)
 
@@ -51,6 +67,20 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> tupl
             code="INVALID_CREDENTIALS",
             message="Invalid email or password.",
         )
+
+    # Ensure existing seed users have a workspace if created earlier
+    if not user.workspace_id:
+        workspace = Workspace(
+            name=f"{user.display_name}'s Workspace",
+            owner_id=user.id,
+            plan_type="starter",
+            monthly_minute_limit=60,
+        )
+        db.add(workspace)
+        await db.flush()
+        user.workspace_id = workspace.id
+        await db.flush()
+        await db.refresh(user)
 
     token = create_access_token(user.id)
     return user, token

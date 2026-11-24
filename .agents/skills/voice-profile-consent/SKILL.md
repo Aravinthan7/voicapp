@@ -24,7 +24,7 @@ Voice cloning is optional in effect and ethically sensitive. The rule: **no cons
 - Disclose to the *listener* when imitated voice is being played (see `call-room-ui`).
 
 ## Language caveat
-Do not assume cross-lingual cloning works for Malayalam or Tamil because the provider is "multilingual". Check `provider-evaluation` results and expose per-language capability in the API (`GET /languages` includes `voice_cloning_supported`). If unsupported or quality is poor for the target language, use the **standard generated-voice fallback**, clearly labeled, and make that the behavior - not an error - for the call.
+Do not assume cross-lingual cloning works for any given language (Malayalam and Tamil included) because the provider is "multilingual". Check `provider-evaluation` results and expose per-language capability in the API (`GET /languages` includes `voice_cloning_supported`). If unsupported or quality is poor for the target language, use the **standard generated-voice fallback**, clearly labeled, and make that the behavior - not an error - for the call.
 
 ## Frontend (VoiceProfile.tsx)
 Steps UI: Consent -> Record -> Review/Test -> Done; each with loading/error states; mic-permission handling shared with `call-room-ui`; Delete button with confirmation; status badge (`Not set up | Processing | Ready | Failed | Disabled`). Guarantee that cancelling at any step leaves no sample stored.

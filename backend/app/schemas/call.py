@@ -24,6 +24,11 @@ class CallRoomRead(BaseModel):
         validation_alias=AliasChoices("createdBy", "created_by"),
         serialization_alias="createdBy",
     )
+    workspaceId: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("workspaceId", "workspace_id"),
+        serialization_alias="workspaceId",
+    )
     status: str
     primaryLanguage: str = Field(
         ...,

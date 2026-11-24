@@ -29,7 +29,7 @@ export const AppHeader: React.FC = () => {
           </div>
           <div className="flex flex-col">
             <span className="leading-tight tracking-tight">VoiceApp</span>
-            <span className="text-[10px] text-ink-muted font-normal">Malayalam &bull; Tamil Live Call</span>
+            <span className="text-[10px] text-ink-muted font-normal">Malayalam &bull; Tamil &bull; Hindi &bull; English Live Call</span>
           </div>
         </Link>
 

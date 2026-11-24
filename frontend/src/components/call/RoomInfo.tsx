@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
-import { Copy, Check, Hash, Globe } from 'lucide-react';
+import { Copy, Check, Hash, Globe, Users } from 'lucide-react';
 import type { CallRoom } from '../../types';
-import { SUPPORTED_LANGUAGES } from '../../types';
 import { Badge } from '../common/Badge';
 
 interface RoomInfoProps {
   room: CallRoom;
 }
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  'ml-IN': 'മലയാളം (Malayalam)',
+  'ta-IN': 'தமிழ் (Tamil)',
+  'hi-IN': 'हिन्दी (Hindi)',
+  'te-IN': 'తెలుగు (Telugu)',
+  'kn-IN': 'ಕನ್ನಡ (Kannada)',
+  'en-IN': 'English',
+};
 
 export const RoomInfo: React.FC<RoomInfoProps> = ({ room }) => {
   const [copied, setCopied] = useState(false);
@@ -22,8 +30,8 @@ export const RoomInfo: React.FC<RoomInfoProps> = ({ room }) => {
     }
   };
 
-  const primary = SUPPORTED_LANGUAGES[room.primaryLanguage];
-  const secondary = SUPPORTED_LANGUAGES[room.secondaryLanguage];
+  const primaryLabel = LANGUAGE_LABELS[room.primaryLanguage] || room.primaryLanguage;
+  const secondaryLabel = LANGUAGE_LABELS[room.secondaryLanguage] || room.secondaryLanguage;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-surface-card/60 border border-border-subtle w-full text-xs">
@@ -53,14 +61,20 @@ export const RoomInfo: React.FC<RoomInfoProps> = ({ room }) => {
             </>
           )}
         </button>
+
+        {/* 1-to-1 strict indicator */}
+        <div className="hidden sm:flex items-center gap-1 text-ink-muted text-[11px] bg-surface-elevated/40 px-2 py-0.5 rounded-lg border border-border-subtle">
+          <Users className="size-3 text-brand-400" />
+          <span>One-to-One (Max 2 Users)</span>
+        </div>
       </div>
 
       {/* Language Pair */}
       <div className="flex items-center gap-2">
         <Globe className="size-3.5 text-ink-muted" />
-        <span className="text-ink-muted">Language Channel:</span>
+        <span className="text-ink-muted">Channel:</span>
         <Badge tone="brand">
-          {primary?.name} ({primary?.nativeName}) &harr; {secondary?.name} ({secondary?.nativeName})
+          {primaryLabel} &harr; {secondaryLabel}
         </Badge>
       </div>
     </div>

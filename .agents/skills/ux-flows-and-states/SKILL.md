@@ -5,7 +5,7 @@ description: User-experience design for VoiceApp journeys - onboarding, sign-up/
 
 # UX Flows, States & Microcopy
 
-Users are two people (e.g. a Malayalam and a Tamil speaker) who may not be tech-savvy and may not share a language - **one of them is often being invited by the other**. Optimize for: get into a call fast, always know what's happening, never be surprised by AI or recording.
+Users are two people (e.g. a Malayalam and a Tamil speaker) who may not be tech-savvy and may not share a language - **one of them is often being invited by the other**, often opening the invite link on a phone. Optimize for: get into a call fast, always know what's happening, never be surprised by AI or recording.
 
 ## Design principles
 1. **Time to first call**: minimal steps; defer optional things (voice profile) until after the first successful call where possible (voice enrollment optional vs required is an *open decision* - design so both work).
@@ -16,13 +16,13 @@ Users are two people (e.g. a Malayalam and a Tamil speaker) who may not be tech-
 6. **Recoverable errors**: every error says what happened, what it means for them, and what to do next.
 
 ## Core flows (sketch each as steps + states before coding)
-**1. First visit -> account**: landing/Login -> Register (name, email, password, speaking language, language to hear) -> Dashboard. Guest joining is undecided; if added, an invitee lands on a Join screen with name + language + mic check only.
+**1. First visit -> account**: landing/Login -> Register (name, email, password, speaking language, language to hear) -> Dashboard. Guest access is deferred (scope 5.4): in Phase 1 the invited person also registers or logs in.
 
 **2. Mic setup** (shared by call and voice profile): explain why mic is needed -> browser prompt -> level meter "say something" confirmation -> proceed. Denied -> instructions per browser + "Try again".
 
-**3. Start a call**: choose/confirm language pair (blocked with explanation if unsupported) -> create room -> waiting screen with code + copy-invite button + "Waiting for [name]..." + cancel.
+**3. Start a call**: confirm your own speaking and listening language (the other person confirms theirs when joining; block with an explanation if a combination turns out to be unsupported) -> create room -> waiting screen with invite link/room code + copy button + "Waiting for [name]..." + cancel.
 
-**4. Join a call**: enter code or open link -> shows who invited you and the language pair -> mic check -> "Join call" (this click also unlocks audio playback).
+**4. Join a call (registered user)**: open the invite link or enter the room code -> sign in if needed -> see who invited you -> confirm "I speak" and "I want to hear" (the receiver decides; the caller cannot change it; a browser-language default may be suggested but must be confirmed) -> read and acknowledge the AI-processing disclosure -> mic check -> "Join call" (this click also unlocks audio playback). Invalid/expired link or a full call -> one clear message and what to do (ask the caller for a new link). Guest (no-account) join is deferred, scope 5.4.
 
 **5. In call**: see `call-room-ui`. Pre-call tip: "Use headphones to avoid echo."
 

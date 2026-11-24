@@ -1,16 +1,21 @@
 ---
 name: translation-pipeline
-description: Designing and implementing the real-time Malayalam-Tamil speech translation pipeline (streaming STT -> translation -> TTS/voice-conditioned speech) with per-direction isolation, partial results, sentence segmentation, turn-taking, playback ducking, latency instrumentation and failure handling. Use when touching backend speech/ code or any audio-translation flow.
+description: Designing and implementing the real-time multilingual speech translation pipeline (any supported source/target language; Malayalam-Tamil is the first validated pair) (streaming STT -> translation -> TTS/voice-conditioned speech) with per-direction isolation, partial results, sentence segmentation, turn-taking, playback ducking, latency instrumentation and failure handling. Use when touching backend speech/ code or any audio-translation flow.
 ---
 
 # Real-time Translation Pipeline
 
 Each direction is an **independent pipeline** that can run concurrently:
 
-`ML mic -> streaming STT (ml) -> text -> translate ml->ta -> TTS/voice-conditioned (ta) -> Person B playback`
-`TA mic -> streaming STT (ta) -> text -> translate ta->ml -> TTS/voice-conditioned (ml) -> Person A playback`
+`speaker mic -> streaming STT (speaker's speaking language) -> text -> translate (source -> receiver's listening language) -> TTS/voice-conditioned (listening language) -> receiver playback`
 
-Order of work (milestones 4-6): test STT, translation and TTS **independently** with fakes/recorded samples -> one-way ML->TA -> reverse -> integrate.
+Source and target languages come from each user's settings at runtime and are **never hard-coded**. Languages are independent per user: a user can speak Tamil and choose to hear English. The target language is the **receiver's** `listening_language` (from `call_participants`); the speaker never sets it for the receiver.
+- If source == target, **skip translation and TTS** and deliver the original audio.
+- Before creating a `PipelineSession`, check the language registry's capability flags (STT for source; translation and TTS for target). If missing, fail with `UNSUPPORTED_LANGUAGE`.
+- Provider/model can differ per language or direction: resolve the adapter by (language, capability), not globally.
+- Worked example (first validated pair): `ml-IN` mic -> STT -> translate ml->ta -> TTS `ta-IN` -> Person B, and the reverse direction.
+
+Order of work (milestones 4-6): test STT, translation and TTS **independently** with fakes/recorded samples -> one-way ML->TA (first validated pair) -> reverse -> integrate -> add further languages one at a time via the registry.
 
 ## Structure (backend/app/speech/)
 - `stt/`, `translation/`, `tts/` each define a `Protocol` interface plus provider implementations selected by config; add a `fake` implementation for tests.
@@ -41,6 +46,7 @@ Timestamps per segment: `t_speech_end`, `t_stt_final`, `t_translation_done`, `t_
 Timeouts per stage; circuit breaker per provider; map provider errors to stable codes (`STT_FAILED`, `TRANSLATION_FAILED`, `TTS_FAILED`, `RATE_LIMITED`, `UNSUPPORTED_LANGUAGE`, `VOICE_PROFILE_UNAVAILABLE`); enforce per-user/per-call usage limits to bound cost; track cost per call minute via usage events.
 
 ## Don'ts
-- Don't assume a model handles Malayalam/Tamil - confirm via `provider-evaluation`.
+- Don't assume a model handles any given language (Malayalam/Tamil included) - confirm per language via `provider-evaluation`.
+- Don't hard-code `ml-IN`/`ta-IN` anywhere in pipeline code, defaults, or tests' expectations.
 - Don't couple a provider SDK into routes or the WebRTC layer.
 - Don't persist audio or text unless an explicit, documented decision says so.

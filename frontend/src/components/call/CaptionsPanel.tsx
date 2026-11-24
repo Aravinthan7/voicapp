@@ -1,7 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Subtitles, Trash2 } from 'lucide-react';
 import type { CaptionItem } from '../../types';
-import { SUPPORTED_LANGUAGES } from '../../types';
 
 interface CaptionsPanelProps {
   captions: CaptionItem[];
@@ -9,6 +8,15 @@ interface CaptionsPanelProps {
   isOpen: boolean;
   onToggleOpen: () => void;
 }
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  'ml-IN': 'Malayalam',
+  'ta-IN': 'Tamil',
+  'hi-IN': 'Hindi',
+  'te-IN': 'Telugu',
+  'kn-IN': 'Kannada',
+  'en-IN': 'English',
+};
 
 export const CaptionsPanel: React.FC<CaptionsPanelProps> = ({
   captions,
@@ -34,7 +42,7 @@ export const CaptionsPanel: React.FC<CaptionsPanelProps> = ({
           aria-expanded={isOpen}
         >
           <Subtitles className="size-4 text-brand-500" />
-          <span>Live Audio Captions (Malayalam / Tamil)</span>
+          <span>Live Audio Captions (Multilingual)</span>
           <span className="text-xs text-ink-muted">({captions.length})</span>
         </button>
 
@@ -61,12 +69,12 @@ export const CaptionsPanel: React.FC<CaptionsPanelProps> = ({
         >
           {captions.length === 0 ? (
             <p className="text-xs text-ink-muted text-center py-4 italic">
-              Spoken dialogue and real-time translations will appear here...
+              Spoken dialogue and real-time receiver-directed translations will appear here...
             </p>
           ) : (
             captions.map((item) => {
-              const origLang = SUPPORTED_LANGUAGES[item.originalLanguage];
-              const targetLang = SUPPORTED_LANGUAGES[item.targetLanguage];
+              const origName = LANGUAGE_NAMES[item.originalLanguage] || item.originalLanguage;
+              const targetName = LANGUAGE_NAMES[item.targetLanguage] || item.targetLanguage;
 
               return (
                 <div
@@ -82,7 +90,7 @@ export const CaptionsPanel: React.FC<CaptionsPanelProps> = ({
                       {item.speakerName}
                     </span>
                     <span>
-                      {origLang?.name} &rarr; {targetLang?.name}
+                      {origName} &rarr; {targetName}
                     </span>
                   </div>
 
@@ -92,11 +100,17 @@ export const CaptionsPanel: React.FC<CaptionsPanelProps> = ({
                     <span>{item.originalText}</span>
                   </div>
 
-                  {/* Translated Text (Highlighted in Teal/Brand) */}
-                  <div className="text-emerald-300 font-medium text-sm">
-                    <span className="text-xs text-emerald-400/80 mr-1.5 font-medium">Translated:</span>
-                    <span>{item.translatedText}</span>
-                  </div>
+                  {/* Translated Text (or Passthrough notice) */}
+                  {item.isPassthrough ? (
+                    <div className="text-ink-muted text-xs italic">
+                      (Same listening language — original audio delivered directly)
+                    </div>
+                  ) : (
+                    <div className="text-emerald-300 font-medium text-sm">
+                      <span className="text-xs text-emerald-400/80 mr-1.5 font-medium">Translated:</span>
+                      <span>{item.translatedText}</span>
+                    </div>
+                  )}
                 </div>
               );
             })

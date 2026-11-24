@@ -36,7 +36,7 @@ Path style: relative imports as in the existing code; do not add path aliases wi
 ## Auth & routing
 - `AuthContext` holds `user`, `status: 'loading' | 'authenticated' | 'anonymous'`, `login`, `logout`. Expose via a `useAuth()` hook that throws if used outside the provider.
 - `ProtectedRoute` waits for `loading` (show a spinner, not a redirect flash), then redirects anonymous users to `/login` preserving the intended path.
-- Routes: `/login`, `/register`, `/` (Dashboard), `/profile/voice`, `/call/:roomId`. Join-by-code/invite link lands on `/call/:roomId` or a `/join/:code` resolver - **this is an open decision**, keep it behind one route so it is easy to change. Guest joining is also undecided; do not assume it.
+- Routes: `/login`, `/register`, `/` (Dashboard), `/profile/voice`, `/call/:roomId`. The invite link / room code resolves to `/call/:roomId` (or a `/join/:code` resolver) and **requires login**: Phase 1 has no guest access (deferred, scope 5.4), so do not build a public `/join/:token` route or a guest session now. Keep the resolver in one place so it is easy to change. See `saas-workspaces-guest-access`.
 - Use `react-router-dom` v7 APIs (`createBrowserRouter`/`RouterProvider` or `<BrowserRouter>` - follow whatever `main.tsx` already uses).
 - Token storage is a security decision: see `auth-security-privacy` before choosing localStorage vs httpOnly cookie.
 

@@ -11,7 +11,7 @@ Maps to scope section 10 (Security and privacy). Voice is biometric-adjacent dat
 - Passwords hashed with **argon2id** (or bcrypt with a sane cost); never log or return them. Enforce minimum length, rate-limit login and registration, return the same message for unknown-email and wrong-password.
 - Short-lived access JWT (~15 min) + rotating refresh token. Validate `exp`, `iss`, `aud`; keep the signing secret in env.
 - Token storage in the browser is a trade-off: **httpOnly + Secure + SameSite cookie** (preferred; needs CSRF protection) vs `localStorage` (simpler, XSS-exposed). Ask the user before committing; if `localStorage`, keep the XSS surface small (no `dangerouslySetInnerHTML`, no untrusted HTML, strict CSP).
-- Open decision: account required vs guest joining. If guests are ever allowed, issue a scoped, short-lived, single-room token - never a general account.
+- Both participants are registered users in Phase 1. Guest access is **deferred** (scope 5.4); if it is built later, use short-lived single-room guest tokens that never reach account endpoints - see `saas-workspaces-guest-access`.
 
 ## Authorization
 - Every call/voice-profile endpoint checks ownership or membership server-side. A user may only read/delete their own voice profile and may only join rooms they were invited to.

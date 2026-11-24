@@ -8,7 +8,7 @@ description: Building the VoiceApp call experience in React - call room page, mu
 Implements scope sections 5.1 D, F, G, H and the accessibility requirements. Pair with `webrtc-signaling-audio` (transport) and `translation-pipeline` (status events).
 
 ## Components (src/components/call/)
-`CallControls` (mute, end, output mode), `ParticipantTile` (name, speaking indicator, language), `ConnectionStatusBadge`, `TranslationStatusIndicator`, `AudioSourceBadge`, `CaptionsPanel` (optional), `MicPermissionGate`, `CallErrorBanner`, `RoomInfo` (room code, invite link copy button, language pair). `pages/CallRoom.tsx` composes them and owns no business logic - hooks do.
+`CallControls` (mute, end, output mode), `ParticipantTile` (name, speaking indicator, language), `ConnectionStatusBadge`, `TranslationStatusIndicator`, `AudioSourceBadge`, `CaptionsPanel` (optional), `MicPermissionGate`, `CallErrorBanner`, `RoomInfo` (invite link / room code copy for the caller; each participant's speaking and listening language). `pages/CallRoom.tsx` composes them and owns no business logic - hooks do.
 
 ## Hooks
 - `useMediaDevices()` - `getUserMedia` with `{ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }`, exposes `status: 'idle' | 'prompting' | 'granted' | 'denied' | 'unavailable'`, device list, `stop()`. Always stop tracks on unmount.
@@ -22,7 +22,8 @@ Keep effects minimal and always return cleanup (close peer connection, socket, t
 | Mic permission not yet asked | Explain *why* before the browser prompt (MicPermissionGate) |
 | Permission denied | Plain-language steps to re-enable in browser settings + retry button |
 | No mic / device in use | Distinct message from "denied" |
-| Waiting for the other participant | Show room code/invite link + copy button |
+| Waiting for the other participant | Caller: invite link/room code + copy button; invitee: "Waiting for [caller]" |
+| Call is full (third person tries to join) | Clear "This call is full" message; no audio, no join |
 | Connecting / reconnecting | Badge + non-blocking message; keep call controls usable |
 | Other participant disconnected | Say so; offer wait or end call |
 | STT / translation / TTS failure | Show "translation unavailable"; never fail silently; offer fall back to original audio |

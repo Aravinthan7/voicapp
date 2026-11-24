@@ -7,8 +7,8 @@ description: Testing strategy, metrics instrumentation and MVP acceptance verifi
 
 ## Test layers
 - **Frontend**: Vitest + React Testing Library (add only when first tests are written; keep dependencies minimal). Test forms, protected routes, call-control state, error banners. Mock `services/` and `getUserMedia`/`RTCPeerConnection`. Playwright (with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`) for two-browser call smoke tests.
-- **Backend**: pytest + pytest-asyncio + httpx. Unit-test services with fake providers; API tests with dependency overrides; WebSocket signaling tests (join, relay, third-participant rejection, disconnect cleanup); authorization tests for every endpoint.
-- **Pipeline**: replay recorded audio through the pipeline with fake/real providers; assert ordering, no duplicate playback, correct fallback on injected failures/timeouts.
+- **Backend**: pytest + pytest-asyncio + httpx. Unit-test services with fake providers; API tests with dependency overrides; WebSocket signaling tests (join, relay, third-participant rejection, disconnect cleanup); authorization tests for every endpoint, cross-tenant access tests (must 404), and a test that a third participant is rejected on REST and WebSocket (calls are strictly one-to-one).
+- **Pipeline**: replay recorded audio through the pipeline with fake/real providers; assert ordering, no duplicate playback, correct fallback on injected failures/timeouts. Parametrize over the enabled language directions and include a synthetic third language in tests to catch hard-coded Malayalam/Tamil assumptions.
 - **Contract tests** per provider adapter so swapping providers doesn't silently change behavior.
 - Never call paid providers in default CI; mark such tests `@pytest.mark.live` and run them manually.
 
@@ -17,7 +17,7 @@ description: Testing strategy, metrics instrumentation and MVP acceptance verifi
 |---|---|
 | End-of-phrase -> translated playback start | per-segment timestamps (see `translation-pipeline`), report p50/p95 |
 | Per-stage latency (STT, MT, TTS first byte) | same timestamps |
-| STT accuracy (ML, TA) | WER/CER on the eval set (see `provider-evaluation`) |
+| STT accuracy per supported language (first: ML, TA) | WER/CER on the eval set (see `provider-evaluation`) |
 | Translation quality | native-speaker ratings on samples |
 | % speech successfully processed | processed segments / detected segments |
 | Call connection success rate | `connected` / attempts from signaling events |
@@ -25,13 +25,23 @@ description: Testing strategy, metrics instrumentation and MVP acceptance verifi
 | Voice similarity/naturalness | listener ratings, only where cloning is enabled |
 | Cost per call minute | `usage_events` aggregated |
 | Comprehension without assistance | post-call user survey |
+| Call join success and time-to-join | funnel events: invite opened -> languages confirmed -> mic OK -> joined |
+| Minutes and cost per workspace vs plan limits | `usage_events` aggregated |
+| Limit-reached and abuse events | rate-limit/quota logs (IDs and counts only) |
 
 Privacy: metrics carry IDs, durations and codes - never transcripts or audio.
 
 ## Phase 1 acceptance checklist (scope section 12)
 - [ ] Two users join the same audio room
-- [ ] ML speaker -> TA translated audio heard by the other
-- [ ] TA speaker -> ML translated audio heard by the other
+- [ ] Each user can pick any supported speaking and listening language
+- [ ] For every enabled combination, the receiver hears audio in their chosen listening language
+- [ ] First validated pair: ML->TA and TA->ML both work
+- [ ] Same language on both sides -> original audio, no translation
+- [ ] Unsupported combination is blocked before the call with a clear message
+- [ ] Each participant hears the other in the language *that participant* chose
+- [ ] A call has exactly two registered participants; a third is rejected with a clear message
+- [ ] Both participants see and acknowledge the AI-processing disclosure before joining
+- [ ] Usage is recorded against the call creator's workspace and plan limits show a clear message
 - [ ] Translation starts automatically; no manual action
 - [ ] Both directions work in the same call
 - [ ] Mute, unmute, end call work

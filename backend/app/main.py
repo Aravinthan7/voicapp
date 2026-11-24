@@ -7,7 +7,9 @@ from app.core.exceptions import AppException, app_exception_handler
 from app.core.security import get_password_hash
 from app.database.session import engine, Base, AsyncSessionLocal
 from app.models.user import User
-from app.api.routes import auth, users, languages, calls, voice_profiles, ws
+from app.models.workspace import Workspace
+from app.service.language_service import seed_default_languages
+from app.api.routes import auth, users, languages, calls, voice_profiles, ws, workspaces
 
 
 @contextlib.asynccontextmanager
@@ -16,8 +18,10 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Seed demo users if not present
+    # Seed default languages & demo users if not present
     async with AsyncSessionLocal() as db:
+        await seed_default_languages(db)
+
         res = await db.execute(select(User).where(User.email == "malayalam.speaker@test.com"))
         if not res.scalar_one_or_none():
             user_ml = User(
@@ -35,6 +39,65 @@ async def lifespan(app: FastAPI):
                 listening_language="ml-IN",
             )
             db.add_all([user_ml, user_ta])
+            await db.flush()
+
+            # Create default workspaces for seed users
+            ws_ml = Workspace(
+                name="Rahul's Workspace",
+                owner_id=user_ml.id,
+                plan_type="starter",
+                monthly_minute_limit=60,
+            )
+            ws_ta = Workspace(
+                name="Karthik's Workspace",
+                owner_id=user_ta.id,
+                plan_type="starter",
+                monthly_minute_limit=60,
+            )
+            db.add_all([ws_ml, ws_ta])
+            await db.flush()
+
+            user_ml.workspace_id = ws_ml.id
+            user_ta.workspace_id = ws_ta.id
+            await db.commit()
+
+        # Seed Hindi and English demo users if not present
+        res_hi = await db.execute(select(User).where(User.email == "hindi.speaker@test.com"))
+        if not res_hi.scalar_one_or_none():
+            user_hi = User(
+                email="hindi.speaker@test.com",
+                password_hash=get_password_hash("testpass123"),
+                display_name="Aarav Sharma",
+                speaking_language="hi-IN",
+                listening_language="en-IN",
+            )
+            user_en = User(
+                email="english.speaker@test.com",
+                password_hash=get_password_hash("testpass123"),
+                display_name="David Smith",
+                speaking_language="en-IN",
+                listening_language="hi-IN",
+            )
+            db.add_all([user_hi, user_en])
+            await db.flush()
+
+            ws_hi = Workspace(
+                name="Aarav's Workspace",
+                owner_id=user_hi.id,
+                plan_type="starter",
+                monthly_minute_limit=60,
+            )
+            ws_en = Workspace(
+                name="David's Workspace",
+                owner_id=user_en.id,
+                plan_type="starter",
+                monthly_minute_limit=60,
+            )
+            db.add_all([ws_hi, ws_en])
+            await db.flush()
+
+            user_hi.workspace_id = ws_hi.id
+            user_en.workspace_id = ws_en.id
             await db.commit()
 
     yield
@@ -46,7 +109,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Multilingual Voice Communication Platform API (Malayalam <-> Tamil)",
+    description="Multilingual Voice Communication Platform API (Language-Agnostic SaaS)",
     lifespan=lifespan,
 )
 
@@ -66,6 +129,7 @@ app.add_exception_handler(AppException, app_exception_handler)
 # Register Routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
+app.include_router(workspaces.router, prefix=settings.API_V1_STR)
 app.include_router(languages.router, prefix=settings.API_V1_STR)
 app.include_router(calls.router, prefix=settings.API_V1_STR)
 app.include_router(voice_profiles.router, prefix=settings.API_V1_STR)

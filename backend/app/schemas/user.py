@@ -66,6 +66,11 @@ class UserRead(BaseModel):
         validation_alias=AliasChoices("listeningLanguage", "listening_language"),
         serialization_alias="listeningLanguage",
     )
+    workspaceId: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("workspaceId", "workspace_id"),
+        serialization_alias="workspaceId",
+    )
     createdAt: datetime = Field(
         ...,
         validation_alias=AliasChoices("createdAt", "created_at"),

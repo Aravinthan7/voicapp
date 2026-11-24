@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, ForeignKey
 from app.database.session import Base
 
 
@@ -13,4 +13,5 @@ class User(Base):
     display_name = Column(String(100), nullable=False)
     speaking_language = Column(String(10), default="ml-IN", nullable=False)
     listening_language = Column(String(10), default="ta-IN", nullable=False)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", use_alter=True), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

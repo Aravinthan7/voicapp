@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Radio, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -7,9 +7,16 @@ import { Select } from '../components/common/Select';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { InlineAlert } from '../components/common/InlineAlert';
+import { languageService } from '../services/languageService';
 import { getErrorMessage } from '../utils/errors';
-import type { LanguageCode } from '../types';
-import { SUPPORTED_LANGUAGES } from '../types';
+import type { SupportedLanguage } from '../types';
+
+const DEFAULT_LANGUAGES: SupportedLanguage[] = [
+  { code: 'ml-IN', name: 'Malayalam', nativeName: 'മലയാളം', flag: '🇮🇳' },
+  { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்', flag: '🇮🇳' },
+  { code: 'hi-IN', name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳' },
+  { code: 'en-IN', name: 'English', nativeName: 'English', flag: '🇮🇳' },
+];
 
 export const Register: React.FC = () => {
   const { register } = useAuth();
@@ -18,15 +25,33 @@ export const Register: React.FC = () => {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [speakingLanguage, setSpeakingLanguage] = useState<LanguageCode>('ml-IN');
-  const [listeningLanguage, setListeningLanguage] = useState<LanguageCode>('ta-IN');
+  const [speakingLanguage, setSpeakingLanguage] = useState<string>('ml-IN');
+  const [listeningLanguage, setListeningLanguage] = useState<string>('ta-IN');
+  const [languages, setLanguages] = useState<SupportedLanguage[]>(DEFAULT_LANGUAGES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const languageOptions = Object.values(SUPPORTED_LANGUAGES).map((lang) => ({
+  useEffect(() => {
+    let active = true;
+    languageService
+      .getLanguages()
+      .then((res) => {
+        if (active && res.languages?.length > 0) {
+          setLanguages(res.languages);
+        }
+      })
+      .catch(() => {
+        // Fall back gracefully to default languages
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const languageOptions = languages.map((lang) => ({
     value: lang.code,
-    label: lang.name,
-    sublabel: lang.nativeName,
+    label: `${lang.nativeName} — ${lang.name}`,
+    sublabel: lang.flag,
   }));
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -67,7 +92,7 @@ export const Register: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold text-ink-primary">Create Your Account</h1>
           <p className="text-sm text-ink-secondary">
-            Join VoiceApp to bridge Malayalam and Tamil conversations seamlessly
+            Join VoiceApp to bridge live cross-lingual conversations seamlessly
           </p>
         </div>
 
@@ -103,19 +128,20 @@ export const Register: React.FC = () => {
               required
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border-subtle">
+            <div className="grid grid-cols-1 gap-3 pt-2 border-t border-border-subtle">
               <Select
-                label="I speak"
+                label="I speak (My speaking language)"
                 options={languageOptions}
                 value={speakingLanguage}
-                onChange={(e) => setSpeakingLanguage(e.target.value as LanguageCode)}
+                onChange={(e) => setSpeakingLanguage(e.target.value)}
               />
 
               <Select
-                label="I want to hear"
+                label="I want to hear (My listening language)"
                 options={languageOptions}
                 value={listeningLanguage}
-                onChange={(e) => setListeningLanguage(e.target.value as LanguageCode)}
+                onChange={(e) => setListeningLanguage(e.target.value)}
+                helperText="You will hear the other person translated into this language."
               />
             </div>
 
@@ -128,7 +154,7 @@ export const Register: React.FC = () => {
               leadingIcon={<ArrowRight className="size-4" />}
               className="mt-2"
             >
-              Register &amp; Continue
+              Register &amp; Create Workspace
             </Button>
           </form>
         </Card>

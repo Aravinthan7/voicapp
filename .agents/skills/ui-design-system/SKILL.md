@@ -42,7 +42,7 @@ Rules:
 Ship dark-first (matches current app) and design light as a token swap, not a rewrite. For class-based switching in v4 add `@custom-variant dark (&:where(.dark, .dark *));`; respect `prefers-color-scheme` by default and persist an explicit user choice. Use semantic tokens (`bg-surface`) so components don't need `dark:` everywhere.
 
 ## Typography
-- Sans: Inter + Noto Sans Malayalam + Noto Sans Tamil fallbacks so both scripts render (see `ux-multilingual-content`). Self-host fonts (`@fontsource`) or load with `font-display: swap`; subset where possible.
+- Sans: Inter + Noto Sans Malayalam + Noto Sans Tamil fallbacks so both first-pair scripts render; add more script fonts as languages are enabled (see `ux-multilingual-content`). Self-host fonts (`@fontsource`) or load with `font-display: swap`; subset where possible.
 - Scale: `text-xs 12 / sm 14 / base 16 / lg 18 / xl 20 / 2xl 24 / 4xl 36`. Body never below 14px; inputs 16px (prevents iOS zoom).
 - Weights: 400 body, 500 labels/buttons, 600-700 headings. Line-height ~1.5 body, ~1.25 headings; Malayalam and Tamil need generous line-height (>= 1.6) because glyphs have tall/deep marks.
 - Max line length ~65ch for prose (privacy/consent text).

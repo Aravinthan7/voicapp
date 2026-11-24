@@ -3,18 +3,25 @@ import { MicOff } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { Badge } from '../common/Badge';
 import { cx } from '../../utils/classNames';
-import type { LanguageCode } from '../../types';
-import { SUPPORTED_LANGUAGES } from '../../types';
 
 interface ParticipantTileProps {
   name: string;
   isSelf?: boolean;
-  speakingLanguage: LanguageCode;
-  listeningLanguage: LanguageCode;
+  speakingLanguage: string;
+  listeningLanguage: string;
   isMuted?: boolean;
   isSpeaking?: boolean;
   audioLevel?: number; // 0 to 1
 }
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  'ml-IN': 'മലയാളം (Malayalam)',
+  'ta-IN': 'தமிழ் (Tamil)',
+  'hi-IN': 'हिन्दी (Hindi)',
+  'te-IN': 'తెలుగు (Telugu)',
+  'kn-IN': 'ಕನ್ನಡ (Kannada)',
+  'en-IN': 'English',
+};
 
 export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   name,
@@ -25,8 +32,8 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   isSpeaking = false,
   audioLevel = 0,
 }) => {
-  const speakingLang = SUPPORTED_LANGUAGES[speakingLanguage];
-  const listeningLang = SUPPORTED_LANGUAGES[listeningLanguage];
+  const speakingDisplay = LANGUAGE_LABELS[speakingLanguage] || speakingLanguage;
+  const listeningDisplay = LANGUAGE_LABELS[listeningLanguage] || listeningLanguage;
 
   return (
     <div
@@ -49,7 +56,7 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       {/* Top status bar inside tile */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-xs">
         <span className="font-medium text-ink-muted">
-          {isSelf ? 'You (Local)' : 'Peer (Remote)'}
+          {isSelf ? 'You (Local)' : 'Peer (Remote Registered Caller)'}
         </span>
         {isMuted && (
           <Badge tone="danger" icon={<MicOff className="size-3" />}>
@@ -74,13 +81,9 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       {/* Language Preferences Tags */}
       <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-xs">
         <span className="text-ink-muted">Speaks:</span>
-        <Badge tone="brand">
-          {speakingLang?.nativeName || speakingLanguage}
-        </Badge>
+        <Badge tone="brand">{speakingDisplay}</Badge>
         <span className="text-ink-muted ml-1">Hears:</span>
-        <Badge tone="neutral">
-          {listeningLang?.nativeName || listeningLanguage}
-        </Badge>
+        <Badge tone="neutral">{listeningDisplay}</Badge>
       </div>
     </div>
   );

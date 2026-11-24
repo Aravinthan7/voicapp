@@ -22,7 +22,7 @@ This is the orchestrating skill for UI work. It tells you the order of operation
 | Repo wiring (routes, services, context) | `frontend-app-architecture`, `react-frontend` |
 
 ## Process
-1. **Understand** - Read the relevant section of `Project_scope.md`. Confirm the feature is Phase 1 (not video/lip-sync/group/mobile-native). Note open decisions that affect the screen (guest join, voice optional, captions) and design so they can flip.
+1. **Understand** - Read the relevant section of `Project_scope.md`. Confirm the feature is Phase 1 (not video/lip-sync/group/mobile-native). Note open decisions that affect the screen (voice optional, captions) and design so they can flip.
 2. **Inspect the repo** - existing `src/` structure, `index.css` tokens, existing components. Reuse and extend; do not restyle unrelated code.
 3. **Define the flow** - user goal, entry point, steps, exit, and every state (loading/empty/error/offline/success). Write the copy now (`ux-flows-and-states`).
 4. **Wireframe in words/ASCII** for mobile (360px) and desktop; call out the primary action, status area, and error placement. Share it with the user for non-trivial screens *before* building (propose approach, then implement - per `react-frontend` rules).

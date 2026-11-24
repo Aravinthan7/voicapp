@@ -29,8 +29,8 @@ The scope proposes `services/`, `db/`, `websocket/`, `webrtc/`. The repo has `ap
 10. Add a `requirements.txt`-style pinned file; if renaming `requirement.txt`, tell the user.
 
 ## Initial endpoints (Phase 1)
-`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET/PATCH /users/me` (display name, speaking language, listening language), `GET /languages` (supported pairs), `POST /calls` (create room), `POST /calls/join` (code/invite), `POST /calls/{id}/end`, `GET/POST/DELETE /voice-profiles/...`, WS `/ws/calls/{id}`.
-Validate the language pair server-side on call creation/join; the frontend check is only UX.
+`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET/PATCH /users/me` (display name, speaking language, listening language), `GET /languages` (supported-language registry with per-language capability flags; used to validate each user's speaking/listening languages and derive allowed directions), `POST /calls` (create room), `POST /calls/join` (invite link/room code; registered users only; rejects a third participant with `CALL_FULL`), `GET /workspaces/me/usage`, `POST /calls/{id}/end`, `GET/POST/DELETE /voice-profiles/...`, WS `/ws/calls/{id}`.
+Validate each participant's speaking/listening language combination server-side on call creation/join (against the registry); the frontend check is only UX.
 
 ## WebSocket endpoints
 Authenticate on connect (token in first message or subprotocol/query - not logged URLs), verify the user belongs to the room, define a typed message envelope `{ "type": str, "payload": {...}, "seq": int }`, enforce message size limits, heartbeat/ping, clean up room state on disconnect. See `webrtc-signaling-audio`.
